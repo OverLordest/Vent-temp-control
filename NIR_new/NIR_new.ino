@@ -21,15 +21,17 @@
 Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);
 //константы
 const word Nism=81;//количество точек измерений
+const word HustT=1;//гистерезис уставки
 //переменные
+word Count=0;//счётчик для сброса автомасштабирования
 float Tust=23;//температура уставки
 float rT=Tust;//температура с датчика
-float rH=Tust;//влажность с датчика
+//float rH=Tust;//влажность с датчика
 float sT[Nism]={};//сохранённые значения температуры
-float sH[Nism]={};//сохранённые значения влажности
-word HustT=2;//гистерезис уставки
-unsigned long last_time=0;//последнее время     
-//начало настройки
+//float sH[Nism]={};//сохранённые значения влажности
+unsigned long last_time=0;//последнее время
+byte TFl=0;//температурный флажок на изменение масшатаба     
+//начало настройки/////////////////////////////////////////////////////
 void setup(void) {
   //инициализация дисплея
   uint16_t identifier = tft.readID();
@@ -54,12 +56,21 @@ void setup(void) {
   digitalWrite(37,HIGH);  
   //Проводим первые измерения, чтоб изначально построить графики
   for(int i=0;i<Nism;i++){
-    rT=random(10,30);
-    rH=random(20,60); 
-    sT[i]=rT;  
-    sH[i]=rH; 
+    rT=random(-10,60);
+    if(rT>50){//Если значене больше 50 приравниваем к 50
+      rT=50;
     }
- //Выключаем ве светодиоды
+    if(rT<0){
+      TFl=1;
+      if(rT<-50){//Если значене меньше -25 приравниваем к -25
+      rT=-50;
+      }
+    }  
+    //rH=random(20,60); 
+    sT[i]=rT;  
+    //sH[i]=rH; 
+    }
+ //Выключаем вcе светодиоды
   digitalWrite(31,LOW);
   digitalWrite(33,LOW);
   digitalWrite(35,LOW);
@@ -69,31 +80,36 @@ void setup(void) {
   tft.setCursor(0, 0);
   tft.setTextColor(RED);  tft.setTextSize(3);
   tft.println("Temp ");
-  tft.setTextColor(BLUE);  tft.setTextSize(3); 
-  tft.println("Hum  ");
+  //tft.setTextColor(BLUE);  tft.setTextSize(3); 
+  //tft.println("Hum  ");
   tft.setTextColor(WHITE);  tft.setTextSize(3); 
   tft.println("Tust ");
   tft.setTextColor(RED);  tft.setTextSize(1); 
   tft.setCursor(0, 100);
   tft.println("  50*C");
-  tft.setTextColor(BLUE);  tft.setTextSize(1);
-  tft.println("  100%");
-  tft.setCursor(0, 280);
-  tft.setTextColor(RED);  tft.setTextSize(1); 
-  tft.println("  0*C");
-  tft.setTextColor(BLUE);  tft.setTextSize(1);
-  tft.println("  0%");  
-  tft.drawRect(39, 99, 403, 201, CYAN);//отрисовка границ графика
+  //tft.setTextColor(BLUE);  tft.setTextSize(1);
+  //tft.println("  100%");
+  tft.setCursor(0, 300);  
+  tft.setTextColor(RED);  tft.setTextSize(1);
+  if(TFl==0){
+    tft.println("   0*C");
+    } 
+  else{
+    tft.println(" -50*C");
+    }  
+  //tft.setTextColor(BLUE);  tft.setTextSize(1);
+  //tft.println("  0%");  
+  tft.drawRect(39, 99, 403, 203, CYAN);//отрисовка границ графика
 }
-//Начало основного цикла
+//Начало основного цикла/////////////////////////////////////////////////////
 void loop() {
   digitalWrite(33,HIGH);//Всегда горящий светодиод
-  if (millis()-last_time>750){
-    digitalWrite(31,HIGH);//Мигающий светодиод (750 мс)
+  if (millis()-last_time>1500){
+    digitalWrite(31,HIGH);//Мигающий светодиод (3с)
   }
-  if (millis()-last_time>1500){//Снимаем данные и отрисовываем раз в полторы секунды
+  if (millis()-last_time>3000){//Снимаем данные и отрисовываем раз в полторы секунды
     last_time=millis();//обнуляеем счётчик
-    digitalWrite(31,LOW);//Мигающий светодиод (750 мс)
+    digitalWrite(31,LOW);//Мигающий светодиод (3с)
     ReadData(); //процедура для чтения информации с датчика DHT11
     DrawGrapth();//Процедура для отрисовки графиков и измерений            
     } 
@@ -112,31 +128,65 @@ void loop() {
       digitalWrite(35,LOW);
     }
 }
-//Процедуры:
+//Процедуры://///////////////////////////////////////////////////
 void ReadData(){//Процедура считывающая значения с датчика
   //читаем с датчика
   //rH = dht.readHumidity();//Читаем влажность
   //rT = dht.readTemperature();//Читаем температуру
-  rT=random(10,30);
-  rH=random(20,60);
+  rT=random(0,60);
+  if(rT>50){//если больше 50 то 50
+      rT=50;
+    }
+  if(rT<0){//если меньше 0 поднимаем флаг маштабирования и меняем значение внизу
+      TFl=1;
+      Count=0;
+      tft.fillRect(0, 280, 30, 300, BLACK);//заполняем нижнюю границу, где было 0*С
+      tft.setTextColor(RED);  tft.setTextSize(1); 
+      tft.setCursor(0, 300); 
+      tft.println(" -50*C");
+      if(rT<-50){//Если значене меньше -50 приравниваем к -50
+        rT=-50;
+      }
+  }
+  //rH=random(20,60);
   //Сдвигаем все значения из легенды влажности и температуры на 1 влево
   for(int i=0;i<(Nism-1);i++){
       sT[i]=sT[i+1];
-      sH[i]=sH[i+1];
+      //sH[i]=sH[i+1];
     }
   //Меняем последние элементы
   sT[Nism-1]=rT;//В поледний элемент массива записываем новую температуру
-  sH[Nism-1]=rH;//В поледний элемент массива записываем новую влажность
+  //sH[Nism-1]=rH;//В поледний элемент массива записываем новую влажность
+  if(TFl==1 && Count<Nism){//если масштабируем и массив не перезаписался, то увеличиваем счётчие
+    Count++;
+    }
+  else{//иначе убираем автомасштабирование
+    TFl=0;
+    Count=0;
+    tft.setTextColor(RED);  tft.setTextSize(1); 
+    tft.fillRect(0, 280, 30, 300, BLACK);//заполняем нижнюю границу, где было -50*С
+    tft.setCursor(0, 300); 
+    tft.println("   0*C");
+    }
 }
 void DrawGrapth(){//Процедура отрисовки графиков и значений
   tft.fillRect(70, 0, 200, 90, BLACK);//Запалняем область значений чёрным квадратом
-  tft.fillRect(40, 100, 401, 199, BLACK);//Запалняем область графиков чёрным квадратом
+  tft.fillRect(40, 100, 401, 201, BLACK);//Запалняем область графиков чёрным квадратом
   DrawIzm();//Процедура отрисовки значений
+  if(TFl==0){
   for(int i=0; i<(Nism-1); i++){//строим графики по Nism точкам. имеем по x 400px по y 200px.Относительно курсора (0;0)
-    tft.drawLine(40+5*i, -2*sT[i]+300, 5*i+45, -2*sT[i+1]+300, RED);//график температуры
-    tft.drawLine(40+5*i, -sH[i]/2+200, 5*i+45, -sH[i+1]/2+200, BLUE);//график влажности
+    tft.drawLine(40+5*i, -4*sT[i]+300, 5*i+45, -4*sT[i+1]+300, RED);//график температуры
+    //tft.drawLine(40+5*i, -sH[i]/2+200, 5*i+45, -sH[i+1]/2+200, BLUE);//график влажности
   }
-  tft.drawLine(40, -2*Tust+300, 440, -2*Tust+300, WHITE);//рисуем линию уставки
+  tft.drawLine(40, -4*Tust+300, 440, -4*Tust+300, WHITE);//рисуем линию уставки
+  }
+  else{
+    for(int i=0; i<(Nism-1); i++){//строим графики по Nism точкам. имеем по x 400px по y 200px.Относительно курсора (0;0)
+    tft.drawLine(40+5*i, int(-2*sT[i]+200), 5*i+45, int(-2*sT[i+1]+200), RED);//график температуры
+    //tft.drawLine(40+5*i, -sH[i]/2+200, 5*i+45, -sH[i+1]/2+200, BLUE);//график влажности
+  }
+  tft.drawLine(40, int(-2*Tust+200), 440, int(-2*Tust+200), WHITE);//рисуем линию уставки
+    }
   }
 void DrawIzm(){//Процедура отрисовки значений
   tft.setCursor(0, 0);//Установка курора в левый верхний угол
@@ -144,10 +194,10 @@ void DrawIzm(){//Процедура отрисовки значений
   tft.print("     ");//пробелы так, как слева имеем постоянные слова Temp,Hum,Tust
   tft.print(rT,1);//Выводим последнюю полученную температуру
   tft.println(" *C");//Выводим цельсий
-  tft.setTextColor(BLUE);  tft.setTextSize(3); 
-  tft.print("     ");
-  tft.print(rH,1);//Выводим последнюю полученную влажность
-  tft.println(" %");
+  //tft.setTextColor(BLUE);  tft.setTextSize(3); 
+  //tft.print("     ");
+  //tft.print(rH,1);//Выводим последнюю полученную влажность
+  //tft.println(" %");
   tft.setTextColor(WHITE);  tft.setTextSize(3); 
   tft.print("     ");
   tft.print(Tust,1);//Выводим температуру уставки
