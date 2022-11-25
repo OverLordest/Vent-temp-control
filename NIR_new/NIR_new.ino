@@ -2,9 +2,21 @@
 //Библиотеки
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_TFTLCD.h> // Hardware-specific library
+#include <TouchScreen.h>
 //#include <EEPROM.h>
-#include "DHT.h"
+#if defined(__SAM3X8E__)
+    #undef __FlashStringHelper::F(string_literal)
+    #define F(string_literal) string_literal
+#endif
 //константы для экрана
+// For better pressure precision, we need to know the resistance
+// between X+ and X- Use any multimeter to read it
+// For the one we're using, its 300 ohms across the X plate
+#define YP A3  // must be an analog pin, use "An" notation!
+#define XM A2  // must be an analog pin, use "An" notation!
+#define YM 9   // can be a digital pin
+#define XP 8   // can be a digital pin
+TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 #define LCD_CS A3 // Chip Select goes to Analog 3
 #define LCD_CD A2 // Command/Data goes to Analog 2
 #define LCD_WR A1 // LCD Write goes to Analog 1
@@ -31,14 +43,16 @@ float sT[Nism]={};//сохранённые значения температур
 //float sH[Nism]={};//сохранённые значения влажности
 unsigned long last_time=0;//последнее время
 byte TFl=0;//температурный флажок на изменение масшатаба     
+TSPoint p;
 //начало настройки/////////////////////////////////////////////////////
 void setup(void) {
   //инициализация дисплея
-  uint16_t identifier = tft.readID();
-  identifier=0x9341;
+  tft.reset();
+  uint16_t identifier = 0x9341;
   tft.begin(identifier);
   //настройка пинов
-  pinMode(31,OUTPUT);//Мигающий светодиод (750 мс)
+  pinMode(13, OUTPUT);//для экрана
+  pinMode(31,OUTPUT);//Мигающий светодиод (3с)
   pinMode(33,OUTPUT);//Всегда горящий светодиод
   pinMode(35,OUTPUT);//Светодиод когда работает вентилятор
   pinMode(37,OUTPUT);//Светодиод когда работает обогрев
@@ -62,7 +76,7 @@ void setup(void) {
     }
     if(rT<0){
       TFl=1;
-      if(rT<-50){//Если значене меньше -25 приравниваем к -25
+      if(rT<-50){//Если значене меньше -50 приравниваем к -50
       rT=-50;
       }
     }  
@@ -100,12 +114,43 @@ void setup(void) {
   //tft.setTextColor(BLUE);  tft.setTextSize(1);
   //tft.println("  0%");  
   tft.drawRect(39, 99, 403, 203, CYAN);//отрисовка границ графика
+  //tft.fillRect(240, 10, 50, 50, RED);//кнопка повышения температуры
+  //tft.fillRect(310, 10, 50, 50, BLUE);//кнопка понижения температуры
 }
 //Начало основного цикла/////////////////////////////////////////////////////
 void loop() {
+  digitalWrite(13, HIGH);//необходимо для работы экрана
+  TSPoint p = ts.getPoint();//получаем значение нажатых пикселей
+  digitalWrite(13, LOW);//необходимо для работы экрана
+  pinMode(XM, OUTPUT);//необходимо для работы экрана
+  pinMode(YP, OUTPUT);//необходимо для работы экрана
+  //tft.println(' ',3);
+  //tft.println(' ',3);
+  //tft.print(p.x,1);
+  //tft.print(p.y,1);
+  
+  //p.x = map(p.x, 940, 120, 320, 0);
+  p.y = map(p.y, 0, 920, 480, 0);
+  //tft.setCursor(150,200);
+  //tft.println((p.y),1);
+  //tft.setCursor(150,230);
+  //tft.println((p.x),1);
+  
   digitalWrite(33,HIGH);//Всегда горящий светодиод
   if (millis()-last_time>1500){
     digitalWrite(31,HIGH);//Мигающий светодиод (3с)
+    if (p.y>150 && p.y<400){
+    Tust=Tust-0.1;
+    delay(100);
+    if(Tust<-50)//ели уставка меньше -50 градусов, то приравниваем к -50
+    {Tust=-50;}
+  }
+  if (p.y>0 && p.y<100){
+    Tust=Tust+0.1;
+    delay(100);
+    if(Tust>50)//ели уставка больше 50 градусов, то приравниваем к 50
+    {Tust=50;}
+  }
   }
   if (millis()-last_time>3000){//Снимаем данные и отрисовываем раз в полторы секунды
     last_time=millis();//обнуляеем счётчик
@@ -170,7 +215,7 @@ void ReadData(){//Процедура считывающая значения с 
     }
 }
 void DrawGrapth(){//Процедура отрисовки графиков и значений
-  tft.fillRect(70, 0, 200, 90, BLACK);//Запалняем область значений чёрным квадратом
+  tft.fillRect(70, 0, 162, 80, BLACK);//Запалняем область значений чёрным квадратом
   tft.fillRect(40, 100, 401, 201, BLACK);//Запалняем область графиков чёрным квадратом
   DrawIzm();//Процедура отрисовки значений
   if(TFl==0){
